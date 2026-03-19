@@ -40,6 +40,7 @@ const searchQuery = ref<string>('')
 
 const selectedAction = ref<UserAction | null>(null)
 const selectedActionIndex = ref<number>(-1)
+const showRecorder = ref(false)
 
 const uxInsightForm = reactive<{
   category: string
@@ -162,7 +163,6 @@ const metrics = computed(() => {
 })
 
 const dayBuckets = computed(() => {
-  // Last 7 days (including today), for a small behavioral rhythm chart.
   const now = new Date()
   const buckets = new Array(7).fill(0) as number[]
 
@@ -185,6 +185,16 @@ const actionDistribution = computed(() => {
   return Object.entries(counts)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 6)
+})
+
+const dayLabels = computed(() => {
+  const labels: string[] = []
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date()
+    d.setDate(d.getDate() - i)
+    labels.push(d.toLocaleDateString(undefined, { weekday: 'short' }))
+  }
+  return labels
 })
 
 async function refreshActions() {
@@ -216,7 +226,6 @@ async function recordInteraction() {
         timestamp: Date.now()
       }
     })
-    // Keep UX snappy: refresh list after recording.
     await refreshActions()
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Failed to record interaction.'
@@ -281,55 +290,90 @@ onMounted(() => {
 
 <template>
   <div>
-    <UPageHero
-      title="User Behavioral Monitoring"
-      description="Track how histopathologists interact with AI-assisted annotation workflows. Designed for quick insight during annotation sessions."
-    />
+    <section class="hero-gradient px-6 pb-12 pt-16">
+      <div class="mx-auto max-w-6xl anim-fade-up">
+        <div class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+          <div>
+            <p class="text-xs font-medium uppercase tracking-widest text-ui-primary">
+              UX Expert Console
+            </p>
+            <h1 class="mt-1 text-3xl font-bold tracking-tight">
+              Behavioral Analytics
+            </h1>
+            <p class="mt-2 max-w-xl text-sm text-ui-muted">
+              Analyse gathered user behavioural data and manage insights from the point of view of a UX expert.
+            </p>
+          </div>
+          <div class="flex items-center gap-3">
+            <label class="text-xs text-ui-muted">API&nbsp;Base</label>
+            <input
+              v-model="apiBase"
+              class="input-modern w-64"
+              placeholder="https://your-backend.com"
+            >
+          </div>
+        </div>
+      </div>
+    </section>
 
-    <UPageSection>
-      <div class="grid gap-4 lg:grid-cols-3">
-        <section class="lg:col-span-1">
-          <div class="rounded-xl border border-ui-border/60 bg-ui-bg p-4">
-            <div class="flex items-start justify-between gap-3">
-              <div>
-                <h2 class="text-base font-semibold">
-                  UX Analytics Controls
-                </h2>
-                <p class="mt-1 text-sm text-ui-muted">
-                  Filter and review behavioral signals to improve the expert experience.
-                </p>
-              </div>
-              <div class="min-w-[240px]">
-                <label class="block text-xs font-medium text-ui-muted">API Base (optional)</label>
-                <input
-                  v-model="apiBase"
-                  class="mt-1 w-full rounded-lg border border-ui-border/60 bg-ui-bg px-3 py-2 text-sm outline-none transition-shadow focus:shadow-[0_0_0_4px_rgba(0,220,130,0.15)]"
-                  placeholder="e.g. https://your-backend.com"
-                >
-              </div>
-            </div>
+    <section class="mx-auto max-w-6xl px-6 py-8">
+      <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div
+          v-for="(s, i) in [
+            { label: 'Total events', value: metrics.total },
+            { label: 'Unique cases', value: metrics.uniqueCases },
+            { label: 'Correction rate', value: `${Math.round(metrics.correctionRate * 100)}%` },
+            { label: 'Avg time spent', value: `${Math.round(metrics.avgDurationSeconds)}s` }
+          ]"
+          :key="s.label"
+          class="stat-card anim-fade-up"
+          :style="{ animationDelay: `${i * 60}ms` }"
+        >
+          <p class="text-[11px] font-medium uppercase tracking-wider text-ui-muted">
+            {{ s.label }}
+          </p>
+          <p class="mt-1 text-2xl font-bold">
+            {{ s.value }}
+          </p>
+        </div>
+      </div>
 
-            <div class="mt-4 grid gap-3">
+      <div class="mt-6 grid gap-6 lg:grid-cols-5">
+        <div class="lg:col-span-2 space-y-4">
+          <div class="glass-card p-5 anim-fade-up">
+            <h2 class="text-xs font-medium uppercase tracking-widest text-ui-muted">
+              Filters
+            </h2>
+            <div class="mt-3 grid gap-3">
               <label class="block text-xs">
                 <span class="text-ui-muted">Time range</span>
                 <select
                   v-model="timeRange"
-                  class="mt-1 w-full rounded-lg border border-ui-border/60 bg-ui-bg px-3 py-2 text-sm outline-none"
+                  class="input-modern mt-1"
                 >
-                  <option value="24h">Last 24h</option>
-                  <option value="7d">Last 7d</option>
-                  <option value="30d">Last 30d</option>
-                  <option value="all">All</option>
+                  <option value="24h">
+                    Last 24 h
+                  </option>
+                  <option value="7d">
+                    Last 7 days
+                  </option>
+                  <option value="30d">
+                    Last 30 days
+                  </option>
+                  <option value="all">
+                    All time
+                  </option>
                 </select>
               </label>
-
               <label class="block text-xs">
                 <span class="text-ui-muted">Action type</span>
                 <select
                   v-model="actionFilter"
-                  class="mt-1 w-full rounded-lg border border-ui-border/60 bg-ui-bg px-3 py-2 text-sm outline-none"
+                  class="input-modern mt-1"
                 >
-                  <option value="all">All</option>
+                  <option value="all">
+                    All
+                  </option>
                   <option
                     v-for="t in actionTypes"
                     :key="t.value"
@@ -339,392 +383,346 @@ onMounted(() => {
                   </option>
                 </select>
               </label>
-
               <label class="block text-xs">
                 <span class="text-ui-muted">Search</span>
                 <input
                   v-model="searchQuery"
-                  class="mt-1 w-full rounded-lg border border-ui-border/60 bg-ui-bg px-3 py-2 text-sm outline-none"
-                  placeholder="Case, slide, or note..."
+                  class="input-modern mt-1"
+                  placeholder="Case, slide, or note…"
                 >
               </label>
-
-              <details class="mt-2 rounded-lg border border-ui-border/60 p-3">
-                <summary class="cursor-pointer text-sm font-semibold text-ui-primary">
-                  Recorder (optional)
-                </summary>
-
-                <div class="mt-3 grid gap-3">
-                  <label class="block text-xs">
-                    <span class="text-ui-muted">Action type</span>
-                    <select
-                      v-model="recordForm.type"
-                      class="mt-1 w-full rounded-lg border border-ui-border/60 bg-ui-bg px-3 py-2 text-sm outline-none"
-                    >
-                      <option
-                        v-for="t in actionTypes"
-                        :key="t.value"
-                        :value="t.value"
-                      >
-                        {{ t.label }}
-                      </option>
-                    </select>
-                  </label>
-
-                  <div class="grid gap-2 md:grid-cols-2">
-                    <label class="block text-xs">
-                      <span class="text-ui-muted">Case ID</span>
-                      <input
-                        v-model="recordForm.caseId"
-                        class="mt-1 w-full rounded-lg border border-ui-border/60 bg-ui-bg px-3 py-2 text-sm outline-none"
-                        placeholder="CASE-1024"
-                      >
-                    </label>
-                    <label class="block text-xs">
-                      <span class="text-ui-muted">Slide ID</span>
-                      <input
-                        v-model="recordForm.slideId"
-                        class="mt-1 w-full rounded-lg border border-ui-border/60 bg-ui-bg px-3 py-2 text-sm outline-none"
-                        placeholder="SLIDE-77A"
-                      >
-                    </label>
-                  </div>
-
-                  <label class="block text-xs">
-                    <span class="text-ui-muted">Time spent (seconds)</span>
-                    <input
-                      v-model.number="recordForm.durationSeconds"
-                      type="number"
-                      min="1"
-                      class="mt-1 w-full rounded-lg border border-ui-border/60 bg-ui-bg px-3 py-2 text-sm outline-none"
-                    >
-                  </label>
-
-                  <label class="block text-xs">
-                    <span class="text-ui-muted">Confidence delta (optional)</span>
-                    <input
-                      v-model.number="recordForm.confidenceDelta"
-                      type="number"
-                      step="0.01"
-                      class="mt-1 w-full rounded-lg border border-ui-border/60 bg-ui-bg px-3 py-2 text-sm outline-none"
-                      placeholder="-0.12 / +0.08"
-                    >
-                  </label>
-
-                  <label class="block text-xs">
-                    <span class="text-ui-muted">Notes (optional)</span>
-                    <textarea
-                      v-model="recordForm.note"
-                      rows="3"
-                      class="mt-1 w-full resize-none rounded-lg border border-ui-border/60 bg-ui-bg px-3 py-2 text-sm outline-none"
-                      placeholder="e.g. 'uncertain ROI border, corrected after zoom' "
-                    />
-                  </label>
-
-                  <UButton
-                    :disabled="loading"
-                    color="primary"
-                    variant="solid"
-                    block
-                    @click="recordInteraction"
-                  >
-                    <span
-                      v-if="loading"
-                      class="inline-flex items-center gap-2"
-                    >
-                      <span class="h-4 w-4 animate-spin rounded-full border-2 border-ui-bg border-t-ui-primary" />
-                      Sending...
-                    </span>
-                    <span v-else>Record interaction</span>
-                  </UButton>
-
-                  <p
-                    v-if="error"
-                    class="text-xs text-red-500"
-                  >
-                    {{ error }}
-                  </p>
-
-                  <p class="text-[11px] text-ui-muted">
-                    Endpoint: <span class="font-mono">POST /users/actions</span>
-                  </p>
-                </div>
-              </details>
-            </div>
-          </div>
-        </section>
-
-        <section class="lg:col-span-2">
-          <div class="rounded-xl border border-ui-border/60 bg-ui-bg p-4">
-            <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-              <div>
-                <h2 class="text-base font-semibold">
-                  Behavioral Statistics
-                </h2>
-                <p class="mt-1 text-sm text-ui-muted">
-                  Metrics are derived from <span class="font-mono">GET /users/actions</span> and shaped by UX expert filters.
-                </p>
-              </div>
-            </div>
-
-            <div class="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <div class="rounded-xl border border-ui-border/60 bg-ui-bg p-3 anim-fade-up">
-                <p class="text-xs text-ui-muted">
-                  Events
-                </p>
-                <p class="mt-1 text-2xl font-bold">
-                  {{ metrics.total }}
-                </p>
-              </div>
-              <div class="rounded-xl border border-ui-border/60 bg-ui-bg p-3 anim-fade-up">
-                <p class="text-xs text-ui-muted">
-                  Unique cases
-                </p>
-                <p class="mt-1 text-2xl font-bold">
-                  {{ metrics.uniqueCases }}
-                </p>
-              </div>
-              <div class="rounded-xl border border-ui-border/60 bg-ui-bg p-3 anim-fade-up">
-                <p class="text-xs text-ui-muted">
-                  Correction rate
-                </p>
-                <p class="mt-1 text-2xl font-bold">
-                  {{ Math.round(metrics.correctionRate * 100) }}%
-                </p>
-              </div>
-              <div class="rounded-xl border border-ui-border/60 bg-ui-bg p-3 anim-fade-up">
-                <p class="text-xs text-ui-muted">
-                  Avg time spent
-                </p>
-                <p class="mt-1 text-2xl font-bold">
-                  {{ Math.round(metrics.avgDurationSeconds) }}s
-                </p>
-              </div>
-            </div>
-
-            <div class="mt-4 grid gap-4 md:grid-cols-2">
-              <div class="rounded-xl border border-ui-border/60 bg-ui-bg p-3">
-                <div class="flex items-center justify-between">
-                  <p class="text-sm font-semibold">
-                    Last 7 days rhythm
-                  </p>
-                  <span class="text-xs text-ui-muted">Animated bars</span>
-                </div>
-                <div class="mt-3 flex h-40 items-end gap-2">
-                  <div
-                    v-for="(n, i) in dayBuckets"
-                    :key="i"
-                    class="flex-1 overflow-hidden rounded-lg bg-ui-primary/10"
-                  >
-                    <div
-                      class="w-full origin-bottom bg-gradient-to-t from-ui-primary/70 to-green-400/70 anim-fade-up"
-                      :style="{
-                        height: `${Math.min(100, (n / (Math.max(...dayBuckets) || 1)) * 100)}%`,
-                        animationDelay: `${i * 60}ms`
-                      }"
-                    />
-                  </div>
-                </div>
-                <p class="mt-2 text-[11px] text-ui-muted">
-                  Note: based on the `timestamp` field returned by your backend.
-                </p>
-              </div>
-
-              <div class="rounded-xl border border-ui-border/60 bg-ui-bg p-3">
-                <p class="text-sm font-semibold">
-                  Action mix
-                </p>
-                <p class="mt-1 text-xs text-ui-muted">
-                  Top event types in the selected range.
-                </p>
-
-                <div class="mt-3 space-y-2">
-                  <div
-                    v-for="(entry, idx) in actionDistribution"
-                    :key="entry[0]"
-                    class="rounded-lg border border-ui-border/60 p-2 anim-fade-up"
-                    :style="{ animationDelay: `${idx * 60}ms` }"
-                  >
-                    <div class="flex items-center justify-between gap-3">
-                      <p class="text-xs font-semibold">
-                        {{ entry[0] }}
-                      </p>
-                      <p class="text-xs text-ui-muted">
-                        {{ entry[1] }}
-                      </p>
-                    </div>
-                    <div class="mt-2 h-2 w-full overflow-hidden rounded bg-ui-primary/10">
-                      <div
-                        class="h-full rounded bg-gradient-to-r from-ui-primary/70 to-green-400/70 transition-[width] duration-700 ease-out"
-                        :style="{ width: `${metrics.total ? (entry[1] / metrics.total) * 100 : 0}%` }"
-                      />
-                    </div>
-                  </div>
-
-                  <div
-                    v-if="actionDistribution.length === 0"
-                    class="text-sm text-ui-muted"
-                  >
-                    No actions found for this time range.
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div class="mt-4 rounded-xl border border-ui-border/60 bg-ui-bg p-4">
-            <div class="flex items-start justify-between gap-3">
-              <div>
-                <h2 class="text-base font-semibold">
-                  UX Review Queue
-                </h2>
-                <p class="mt-1 text-sm text-ui-muted">
-                  Select an event and add UX insights to understand friction points in AI-assisted annotation.
-                </p>
-              </div>
               <UButton
-                size="xs"
-                variant="ghost"
+                variant="subtle"
+                color="primary"
+                block
                 :disabled="loading"
                 @click="refreshActions"
               >
-                {{ loading ? 'Refreshing...' : 'Refresh' }}
+                {{ loading ? 'Loading…' : 'Refresh data' }}
               </UButton>
             </div>
+          </div>
 
-            <div class="mt-3 grid gap-3 md:grid-cols-2">
-              <div class="max-h-[420px] overflow-auto pr-1">
+          <div
+            class="glass-card p-5 anim-fade-up"
+            :style="{ animationDelay: '80ms' }"
+          >
+            <div class="flex items-center justify-between">
+              <h2 class="text-xs font-medium uppercase tracking-widest text-ui-muted">
+                7-Day Rhythm
+              </h2>
+              <span class="text-[11px] text-ui-muted">Events per day</span>
+            </div>
+            <div class="mt-3 flex h-32 items-end gap-1.5">
+              <div
+                v-for="(n, i) in dayBuckets"
+                :key="i"
+                class="flex flex-1 flex-col items-center gap-1"
+              >
+                <span class="text-[10px] font-medium text-ui-muted">{{ n || '' }}</span>
+                <div
+                  class="bar-track w-full"
+                  style="height: 96px"
+                >
+                  <div
+                    class="bar-fill w-full anim-fade-up"
+                    :style="{
+                      height: `${Math.min(100, (n / (Math.max(...dayBuckets) || 1)) * 100)}%`,
+                      animationDelay: `${i * 60}ms`,
+                      marginTop: 'auto'
+                    }"
+                  />
+                </div>
+                <span class="text-[10px] text-ui-muted">{{ dayLabels[i] }}</span>
+              </div>
+            </div>
+          </div>
+
+          <div
+            class="glass-card p-5 anim-fade-up"
+            :style="{ animationDelay: '160ms' }"
+          >
+            <h2 class="text-xs font-medium uppercase tracking-widest text-ui-muted">
+              Action Distribution
+            </h2>
+            <div class="mt-3 space-y-2.5">
+              <div
+                v-for="(entry, idx) in actionDistribution"
+                :key="entry[0]"
+                class="anim-fade-up"
+                :style="{ animationDelay: `${idx * 40}ms` }"
+              >
+                <div class="flex items-center justify-between gap-2">
+                  <span class="truncate text-xs font-medium">{{ entry[0] }}</span>
+                  <span class="shrink-0 text-xs text-ui-muted">{{ entry[1] }}</span>
+                </div>
+                <div class="mt-1 h-1.5 overflow-hidden rounded-full bg-ui-primary/10">
+                  <div
+                    class="h-full rounded-full bg-gradient-to-r from-ui-primary to-blue-400 transition-[width] duration-700 ease-out"
+                    :style="{ width: `${metrics.total ? (entry[1] / metrics.total) * 100 : 0}%` }"
+                  />
+                </div>
+              </div>
+              <p
+                v-if="actionDistribution.length === 0"
+                class="text-xs text-ui-muted"
+              >
+                No data for this range.
+              </p>
+            </div>
+          </div>
+
+          <button
+            class="w-full rounded-xl border border-dashed border-ui-border/40 px-4 py-3 text-left text-xs font-medium text-ui-muted transition-colors hover:border-ui-primary/30 hover:text-ui-primary"
+            @click="showRecorder = !showRecorder"
+          >
+            {{ showRecorder ? 'Hide recorder' : 'Record interaction manually…' }}
+          </button>
+
+          <div
+            v-if="showRecorder"
+            class="glass-card p-5 anim-slide-down"
+          >
+            <h2 class="text-xs font-medium uppercase tracking-widest text-ui-muted">
+              Manual Recorder
+            </h2>
+            <div class="mt-3 grid gap-3">
+              <label class="block text-xs">
+                <span class="text-ui-muted">Action type</span>
+                <select
+                  v-model="recordForm.type"
+                  class="input-modern mt-1"
+                >
+                  <option
+                    v-for="t in actionTypes"
+                    :key="t.value"
+                    :value="t.value"
+                  >
+                    {{ t.label }}
+                  </option>
+                </select>
+              </label>
+              <div class="grid gap-2 sm:grid-cols-2">
+                <label class="block text-xs">
+                  <span class="text-ui-muted">Case ID</span>
+                  <input
+                    v-model="recordForm.caseId"
+                    class="input-modern mt-1"
+                    placeholder="CASE-1024"
+                  >
+                </label>
+                <label class="block text-xs">
+                  <span class="text-ui-muted">Slide ID</span>
+                  <input
+                    v-model="recordForm.slideId"
+                    class="input-modern mt-1"
+                    placeholder="SLIDE-77A"
+                  >
+                </label>
+              </div>
+              <div class="grid gap-2 sm:grid-cols-2">
+                <label class="block text-xs">
+                  <span class="text-ui-muted">Duration (s)</span>
+                  <input
+                    v-model.number="recordForm.durationSeconds"
+                    type="number"
+                    min="1"
+                    class="input-modern mt-1"
+                  >
+                </label>
+                <label class="block text-xs">
+                  <span class="text-ui-muted">Confidence Δ</span>
+                  <input
+                    v-model.number="recordForm.confidenceDelta"
+                    type="number"
+                    step="0.01"
+                    class="input-modern mt-1"
+                    placeholder="-0.12"
+                  >
+                </label>
+              </div>
+              <label class="block text-xs">
+                <span class="text-ui-muted">Notes</span>
+                <textarea
+                  v-model="recordForm.note"
+                  rows="2"
+                  class="input-modern mt-1 resize-none"
+                  placeholder="e.g. uncertain ROI border, corrected after zoom"
+                />
+              </label>
+              <UButton
+                :disabled="loading"
+                color="primary"
+                variant="solid"
+                block
+                @click="recordInteraction"
+              >
+                <span
+                  v-if="loading"
+                  class="inline-flex items-center gap-2"
+                >
+                  <span class="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                  Sending…
+                </span>
+                <span v-else>Record interaction</span>
+              </UButton>
+              <p
+                v-if="error"
+                class="text-xs text-red-500"
+              >
+                {{ error }}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div class="lg:col-span-3">
+          <div class="glass-card p-5">
+            <div class="flex items-center justify-between">
+              <div>
+                <h2 class="text-sm font-semibold">
+                  UX Review Queue
+                </h2>
+                <p class="mt-0.5 text-xs text-ui-muted">
+                  Select an event to inspect details and add UX insights.
+                </p>
+              </div>
+              <span class="rounded-full bg-ui-primary/10 px-2.5 py-1 text-[11px] font-medium text-ui-primary">
+                {{ filteredActions.length }} event{{ filteredActions.length === 1 ? '' : 's' }}
+              </span>
+            </div>
+
+            <div class="mt-4 grid gap-4 xl:grid-cols-2">
+              <div class="max-h-[560px] space-y-1.5 overflow-auto pr-1">
                 <div
                   v-if="loading"
                   class="space-y-2"
                 >
-                  <div class="rounded-lg border border-ui-border/60 p-3 animate-pulse">
-                    <div class="h-3 w-1/2 rounded bg-ui-primary/15" />
-                    <div class="mt-2 h-3 w-2/3 rounded bg-ui-primary/15" />
-                  </div>
-                  <div class="rounded-lg border border-ui-border/60 p-3 animate-pulse">
-                    <div class="h-3 w-1/3 rounded bg-ui-primary/15" />
-                    <div class="mt-2 h-3 w-1/2 rounded bg-ui-primary/15" />
+                  <div
+                    v-for="n in 4"
+                    :key="n"
+                    class="rounded-xl border border-ui-border/30 p-3 animate-pulse"
+                  >
+                    <div class="h-3 w-2/3 rounded bg-ui-primary/10" />
+                    <div class="mt-2 h-3 w-1/2 rounded bg-ui-primary/10" />
                   </div>
                 </div>
 
                 <div
                   v-else-if="filteredActions.length === 0"
-                  class="text-sm text-ui-muted"
+                  class="flex flex-col items-center py-12 text-center"
                 >
-                  No interaction events to display.
+                  <div class="flex h-14 w-14 items-center justify-center rounded-2xl bg-ui-primary/10">
+                    <UIcon
+                      name="i-lucide-inbox"
+                      class="h-7 w-7 text-ui-muted"
+                    />
+                  </div>
+                  <p class="mt-4 text-sm font-medium">
+                    No events found
+                  </p>
+                  <p class="mt-1 max-w-xs text-xs text-ui-muted">
+                    Adjust filters or press Refresh to fetch events.
+                  </p>
                 </div>
 
                 <button
                   v-for="(a, idx) in filteredActions.slice().reverse()"
                   v-else
                   :key="String(a.id ?? idx)"
-                  class="mb-2 w-full rounded-xl border border-ui-border/60 bg-ui-bg p-3 text-left transition-shadow hover:shadow-[0_10px_30px_rgba(0,0,0,0.06)] anim-fade-up"
-                  :style="{ animationDelay: `${idx * 35}ms` }"
-                  :class="selectedActionIndex === idx ? 'ring-2 ring-ui-primary/50' : ''"
+                  class="w-full rounded-xl border p-3 text-left transition-all anim-fade-up"
+                  :class="selectedActionIndex === idx
+                    ? 'border-ui-primary/40 bg-ui-primary/5 shadow-sm'
+                    : 'border-ui-border/30 hover:border-ui-primary/20 hover:bg-ui-primary/[2%]'"
+                  :style="{ animationDelay: `${Math.min(idx, 10) * 30}ms` }"
                   @click="selectedAction = a; selectedActionIndex = idx"
                 >
-                  <div class="flex items-center justify-between gap-3">
-                    <p class="text-sm font-semibold">
-                      {{ a.type ?? a.actionType ?? a.event ?? 'unknown' }}
-                    </p>
-                    <p class="text-xs text-ui-muted">
-                      {{
-                        parseTs(a.timestamp)
-                          ? parseTs(a.timestamp)?.toLocaleString()
-                          : '—'
-                      }}
-                    </p>
-                  </div>
-                  <div class="mt-2 grid gap-2 sm:grid-cols-2">
-                    <div>
-                      <p class="text-[11px] text-ui-muted">
-                        Case / Slide
-                      </p>
-                      <p class="text-sm">
-                        {{ a.caseId ?? a.case_id ?? '—' }} / {{ a.slideId ?? a.slide_id ?? '—' }}
-                      </p>
+                  <div class="flex items-center justify-between gap-2">
+                    <div class="flex items-center gap-2">
+                      <span class="rounded-full bg-ui-primary/10 px-2 py-0.5 text-[11px] font-medium text-ui-primary">
+                        {{ a.type ?? a.actionType ?? a.event ?? 'unknown' }}
+                      </span>
                     </div>
-                    <div>
-                      <p class="text-[11px] text-ui-muted">
-                        Duration
-                      </p>
-                      <p class="text-sm">
-                        {{ a.durationSeconds ?? a.duration_seconds ?? '—' }}s
-                      </p>
-                    </div>
+                    <span class="text-[11px] text-ui-muted">
+                      {{ parseTs(a.timestamp) ? parseTs(a.timestamp)?.toLocaleString() : '—' }}
+                    </span>
                   </div>
-                  <p
-                    v-if="a.note"
-                    class="mt-2 whitespace-pre-wrap text-sm text-ui-muted"
-                  >
-                    {{ a.note }}
-                  </p>
+                  <div class="mt-2 flex items-center gap-4 text-xs text-ui-muted">
+                    <span>{{ a.caseId ?? a.case_id ?? '—' }} / {{ a.slideId ?? a.slide_id ?? '—' }}</span>
+                    <span>{{ a.durationSeconds ?? a.duration_seconds ?? '—' }}s</span>
+                  </div>
                 </button>
               </div>
 
-              <div class="rounded-xl border border-ui-border/60 bg-ui-bg p-3">
-                <div class="flex items-center justify-between gap-3">
-                  <h3 class="text-sm font-semibold">
-                    Event Details
-                  </h3>
-                  <button
-                    type="button"
-                    class="text-xs text-ui-muted underline underline-offset-4 hover:text-ui-primary"
-                    :disabled="!selectedAction"
-                    @click="selectedAction = null; selectedActionIndex = -1"
-                  >
-                    Clear
-                  </button>
-                </div>
-
+              <div class="rounded-xl border border-ui-border/30 p-4">
                 <div
                   v-if="!selectedAction"
-                  class="mt-3 text-sm text-ui-muted"
+                  class="flex flex-col items-center py-16 text-center"
                 >
-                  Select an event from the queue to add UX insights.
+                  <div class="flex h-12 w-12 items-center justify-center rounded-2xl bg-ui-primary/10">
+                    <UIcon
+                      name="i-lucide-mouse-pointer-click"
+                      class="h-5 w-5 text-ui-muted"
+                    />
+                  </div>
+                  <p class="mt-3 text-sm text-ui-muted">
+                    Select an event to inspect
+                  </p>
                 </div>
 
                 <div
                   v-else
-                  class="mt-3"
+                  class="anim-fade-up"
                 >
-                  <p class="text-xs text-ui-muted">
-                    Type
-                  </p>
-                  <p class="text-sm font-semibold">
-                    {{ selectedAction.type ?? selectedAction.actionType ?? selectedAction.event ?? 'unknown' }}
-                  </p>
+                  <div class="flex items-center justify-between">
+                    <h3 class="text-sm font-semibold">
+                      Event Details
+                    </h3>
+                    <button
+                      class="text-xs text-ui-muted hover:text-ui-primary"
+                      @click="selectedAction = null; selectedActionIndex = -1"
+                    >
+                      Clear
+                    </button>
+                  </div>
 
                   <div class="mt-3 grid gap-2 sm:grid-cols-2">
-                    <div>
-                      <p class="text-[11px] text-ui-muted">
-                        Case / Slide
+                    <div class="rounded-lg bg-ui-bg/60 p-2.5">
+                      <p class="text-[10px] font-medium uppercase tracking-wider text-ui-muted">
+                        Type
                       </p>
-                      <p class="text-sm">
-                        {{ selectedAction.caseId ?? selectedAction.case_id ?? '—' }} / {{ selectedAction.slideId ?? selectedAction.slide_id ?? '—' }}
+                      <p class="mt-0.5 text-sm font-semibold">
+                        {{ selectedAction.type ?? selectedAction.actionType ?? selectedAction.event ?? 'unknown' }}
                       </p>
                     </div>
-                    <div>
-                      <p class="text-[11px] text-ui-muted">
+                    <div class="rounded-lg bg-ui-bg/60 p-2.5">
+                      <p class="text-[10px] font-medium uppercase tracking-wider text-ui-muted">
                         Duration
                       </p>
-                      <p class="text-sm">
+                      <p class="mt-0.5 text-sm font-semibold">
                         {{ selectedAction.durationSeconds ?? selectedAction.duration_seconds ?? '—' }}s
+                      </p>
+                    </div>
+                    <div class="rounded-lg bg-ui-bg/60 p-2.5 sm:col-span-2">
+                      <p class="text-[10px] font-medium uppercase tracking-wider text-ui-muted">
+                        Case / Slide
+                      </p>
+                      <p class="mt-0.5 text-sm font-semibold">
+                        {{ selectedAction.caseId ?? selectedAction.case_id ?? '—' }} / {{ selectedAction.slideId ?? selectedAction.slide_id ?? '—' }}
                       </p>
                     </div>
                   </div>
 
-                  <div class="mt-4 rounded-lg border border-ui-border/60 bg-ui-bg p-3 anim-fade-up">
-                    <p class="text-xs font-semibold text-ui-muted">
+                  <div class="mt-4 rounded-xl border border-ui-border/30 p-3">
+                    <p class="text-[11px] font-medium uppercase tracking-wider text-ui-muted">
                       Add UX Insight
                     </p>
-                    <div class="mt-3 grid gap-3">
+                    <div class="mt-2.5 grid gap-2.5">
                       <label class="block text-xs">
                         <span class="text-ui-muted">Category</span>
                         <select
                           v-model="uxInsightForm.category"
-                          class="mt-1 w-full rounded-lg border border-ui-border/60 bg-ui-bg px-3 py-2 text-sm outline-none"
+                          class="input-modern mt-1"
                         >
                           <option
                             v-for="c in uxCategories"
@@ -735,7 +733,6 @@ onMounted(() => {
                           </option>
                         </select>
                       </label>
-
                       <label class="block text-xs">
                         <span class="text-ui-muted">Severity: {{ uxInsightForm.severity }}/5</span>
                         <input
@@ -744,20 +741,18 @@ onMounted(() => {
                           min="1"
                           max="5"
                           step="1"
-                          class="mt-2 w-full"
+                          class="mt-1 w-full accent-[var(--ui-primary)]"
                         >
                       </label>
-
                       <label class="block text-xs">
-                        <span class="text-ui-muted">UX note</span>
+                        <span class="text-ui-muted">Note</span>
                         <textarea
                           v-model="uxInsightForm.note"
-                          rows="3"
-                          class="mt-1 w-full resize-none rounded-lg border border-ui-border/60 bg-ui-bg px-3 py-2 text-sm outline-none"
-                          placeholder="Short description of the friction point or improvement."
+                          rows="2"
+                          class="input-modern mt-1 resize-none"
+                          placeholder="Describe the friction point or improvement."
                         />
                       </label>
-
                       <UButton
                         :disabled="uxSending"
                         color="primary"
@@ -769,21 +764,16 @@ onMounted(() => {
                           v-if="uxSending"
                           class="inline-flex items-center gap-2"
                         >
-                          <span class="h-4 w-4 animate-spin rounded-full border-2 border-ui-bg border-t-ui-primary" />
-                          Sending...
+                          <span class="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                          Sending…
                         </span>
-                        <span v-else>Send UX insight</span>
+                        <span v-else>Submit insight</span>
                       </UButton>
-
                       <p
                         v-if="uxError"
                         class="text-xs text-red-500"
                       >
                         {{ uxError }}
-                      </p>
-
-                      <p class="text-[11px] text-ui-muted">
-                        Endpoint: <span class="font-mono">POST /users/actions</span> with <span class="font-mono">type=ux_insight</span>.
                       </p>
                     </div>
                   </div>
@@ -791,22 +781,8 @@ onMounted(() => {
               </div>
             </div>
           </div>
-        </section>
-      </div>
-
-      <div class="mt-6 rounded-xl border border-ui-border/60 bg-ui-bg p-4">
-        <div class="flex items-center justify-between gap-3">
-          <h3 class="text-sm font-semibold">
-            API Endpoints
-          </h3>
-        </div>
-        <div class="mt-2 text-sm text-ui-muted">
-          <div><span class="font-mono">GET /users/actions</span> loads events and powers metrics.</div>
-          <div class="mt-1">
-            <span class="font-mono">POST /users/actions</span> records new interaction events.
-          </div>
         </div>
       </div>
-    </UPageSection>
+    </section>
   </div>
 </template>
