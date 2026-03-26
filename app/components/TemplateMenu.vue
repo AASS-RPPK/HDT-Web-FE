@@ -4,7 +4,7 @@
     :modal="false"
     :items="[
       { label: 'Overview', to: '/', icon: 'i-lucide-shield-check', color: 'neutral' },
-      { label: 'Active Learning', to: '/active-learning', icon: 'i-lucide-brain', color: 'primary' },
+{ label: 'Active Learning', to: '/active-learning', icon: 'i-lucide-brain', color: 'primary' },
       { label: 'User Behavioral', to: '/user-behavioral', icon: 'i-lucide-heart-pulse', color: 'primary' }
     ]"
     :content="{ align: 'start' }"

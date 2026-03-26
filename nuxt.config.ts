@@ -5,6 +5,13 @@ export default defineNuxtConfig({
     '@nuxt/ui'
   ],
 
+  runtimeConfig: {
+    public: {
+      // Overridden at runtime by NUXT_PUBLIC_API_BASE env var (set in docker-compose).
+      apiBase: ''
+    }
+  },
+
   devtools: {
     enabled: true
   },

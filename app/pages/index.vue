@@ -21,8 +21,8 @@
         <div class="mt-8 flex flex-wrap items-center justify-center gap-3">
           <UButton
             to="/active-learning"
-            color="primary"
-            variant="solid"
+            color="neutral"
+            variant="subtle"
             size="lg"
             trailing-icon="i-lucide-arrow-right"
           >

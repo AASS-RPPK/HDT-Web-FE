@@ -7,6 +7,7 @@ definePageMeta({
 type StepKey = 'upload' | 'retrieve' | 'tune' | 'deploy'
 type StepStatus = 'idle' | 'loading' | 'success' | 'error'
 
+const runtimeConfig = useRuntimeConfig()
 const apiBase = ref<string>('')
 
 function persistApiBase(value: string) {
@@ -15,8 +16,8 @@ function persistApiBase(value: string) {
 }
 
 function restoreApiBase() {
-  if (typeof window === 'undefined') return ''
-  return window.localStorage.getItem('hdt_apiBase') ?? ''
+  if (typeof window === 'undefined') return runtimeConfig.public.apiBase as string
+  return window.localStorage.getItem('hdt_apiBase') ?? runtimeConfig.public.apiBase as string
 }
 
 function resolveApiUrl(path: string) {
