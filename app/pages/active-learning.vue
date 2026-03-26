@@ -1,13 +1,15 @@
 <script setup lang="ts">
 definePageMeta({
   ssr: false,
-  title: 'Active Learning Dashboard'
+  title: 'Active Learning Dashboard',
+  middleware: 'auth'
 })
 
 type StepKey = 'upload' | 'retrieve' | 'tune' | 'deploy'
 type StepStatus = 'idle' | 'loading' | 'success' | 'error'
 
 const runtimeConfig = useRuntimeConfig()
+const { apiFetch } = useApi()
 const apiBase = ref<string>('')
 
 function persistApiBase(value: string) {
@@ -155,7 +157,7 @@ async function refreshQueue() {
   queueLoading.value = true
   queueError.value = null
   try {
-    const res = await $fetch(resolveApiUrl('/feedback'), { method: 'GET' })
+    const res = await apiFetch(resolveApiUrl('/feedback'), { method: 'GET' })
     lastResponse.value = res
     queue.value = asArray(res)
     addActivity('success', `Retrieved ${queue.value.length} feedback item(s).`)
@@ -179,7 +181,7 @@ async function onUploadFeedback() {
     if (uploadForm.revisedAnnotation) body.append('revisedAnnotation', uploadForm.revisedAnnotation)
     if (uploadForm.imageFile) body.append('image', uploadForm.imageFile)
 
-    const res = await $fetch(url, { method: 'POST', body })
+    const res = await apiFetch(url, { method: 'POST', body })
     lastResponse.value = res
     stepStatus.value.upload = 'success'
     addActivity('success', 'Feedback uploaded. Queue refresh pending.')
@@ -193,7 +195,7 @@ async function onUploadFeedback() {
 async function onStartFineTuning() {
   stepStatus.value.tune = 'loading'
   try {
-    const res = await $fetch(resolveApiUrl('/models/annotation/train'), {
+    const res = await apiFetch(resolveApiUrl('/models/annotation/train'), {
       method: 'POST',
       body: {
         mode: tuningConfig.mode,
@@ -223,7 +225,7 @@ async function onStartFineTuning() {
 async function onDeployOrRollback() {
   stepStatus.value.deploy = 'loading'
   try {
-    const res = await $fetch(resolveApiUrl('/models/annotation/deploy'), {
+    const res = await apiFetch(resolveApiUrl('/models/annotation/deploy'), {
       method: 'POST',
       body: {
         action: deployConfig.action,

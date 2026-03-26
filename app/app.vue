@@ -1,4 +1,12 @@
 <script setup>
+const { isAuthenticated, logout } = useAuth()
+const router = useRouter()
+
+async function handleLogout() {
+  logout()
+  await router.push('/login')
+}
+
 useHead({
   meta: [
     { name: 'viewport', content: 'width=device-width, initial-scale=1' }
@@ -36,6 +44,24 @@ useSeoMeta({
 
       <template #right>
         <UColorModeButton />
+        <UButton
+          v-if="isAuthenticated"
+          size="xs"
+          variant="ghost"
+          leading-icon="i-lucide-log-out"
+          @click="handleLogout"
+        >
+          Sign out
+        </UButton>
+        <UButton
+          v-else
+          size="xs"
+          variant="ghost"
+          leading-icon="i-lucide-log-in"
+          to="/login"
+        >
+          Sign in
+        </UButton>
       </template>
     </UHeader>
 

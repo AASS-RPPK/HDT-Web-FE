@@ -1,12 +1,15 @@
 <script setup lang="ts">
 definePageMeta({
   ssr: false,
-  title: 'User Behavioral Dashboard'
+  title: 'User Behavioral Dashboard',
+  middleware: 'auth'
 })
 
 type AnyRecord = Record<string, unknown>
 
 const runtimeConfig = useRuntimeConfig()
+const { apiFetch } = useApi()
+const { accessToken } = useAuth()
 const apiBase = ref<string>('')
 
 function persistApiBase(value: string) {
@@ -87,6 +90,60 @@ const actionTypes = [
   { value: 'zoomed', label: 'Zoom / inspected ROI' }
 ]
 
+const BEHAVIOR_SESSION_KEY = 'hdt_behavioral_session_id'
+
+function decodeJwtSub(token: string): string | null {
+  try {
+    const [, payloadB64] = token.split('.')
+    if (!payloadB64) return null
+    const json = atob(payloadB64.replace(/-/g, '+').replace(/_/g, '/'))
+    const payload = JSON.parse(json) as { sub?: unknown }
+    return typeof payload.sub === 'string' && payload.sub.trim() ? payload.sub : null
+  } catch {
+    return null
+  }
+}
+
+function getSessionId(): string {
+  if (typeof window === 'undefined') return crypto.randomUUID()
+  const existing = window.localStorage.getItem(BEHAVIOR_SESSION_KEY)
+  if (existing) return existing
+  const created = crypto.randomUUID()
+  window.localStorage.setItem(BEHAVIOR_SESSION_KEY, created)
+  return created
+}
+
+function actionTypeOf(action: UserAction): string {
+  return String(action.action_type ?? action.type ?? action.actionType ?? action.event ?? 'unknown')
+}
+
+function metadataOf(action: UserAction): AnyRecord {
+  const raw = action.metadata as AnyRecord | undefined
+  return raw ?? {}
+}
+
+function caseIdOf(action: UserAction): string {
+  const meta = metadataOf(action)
+  return String(action.caseId ?? action.case_id ?? meta.caseId ?? meta.case_id ?? '')
+}
+
+function slideIdOf(action: UserAction): string {
+  const meta = metadataOf(action)
+  return String(action.slideId ?? action.slide_id ?? meta.slideId ?? meta.slide_id ?? '')
+}
+
+function noteOf(action: UserAction): string {
+  const meta = metadataOf(action)
+  return String(action.note ?? action.notes ?? action.comment ?? meta.note ?? '')
+}
+
+function durationOf(action: UserAction): number | null {
+  const meta = metadataOf(action)
+  const v = action.durationSeconds ?? action.duration_seconds ?? meta.durationSeconds ?? meta.duration_seconds
+  const n = typeof v === 'number' ? v : Number(v)
+  return Number.isFinite(n) ? n : null
+}
+
 function asArray(maybeItems: unknown): UserAction[] {
   if (Array.isArray(maybeItems)) return maybeItems as UserAction[]
   const obj = maybeItems as AnyRecord | null
@@ -123,14 +180,14 @@ const filteredActions = computed(() => {
     if (!d) return false
     if (d.getTime() < cutoff) return false
 
-    const typeStr = String(a.type ?? a.actionType ?? a.event ?? '')
+    const typeStr = actionTypeOf(a)
     const typeOk = typeWanted === 'all' ? true : typeStr.toLowerCase().includes(typeWanted)
     if (!typeOk) return false
 
     if (!q) return true
-    const caseId = String(a.caseId ?? a.case_id ?? '')
-    const slideId = String(a.slideId ?? a.slide_id ?? '')
-    const note = String(a.note ?? a.notes ?? a.comment ?? '')
+    const caseId = caseIdOf(a)
+    const slideId = slideIdOf(a)
+    const note = noteOf(a)
     return [typeStr, caseId, slideId, note].some(s => s.toLowerCase().includes(q))
   })
 })
@@ -140,22 +197,20 @@ const metrics = computed(() => {
   const uniqueCases = new Set(filteredActions.value.map(a => String(a.caseId ?? a.case_id ?? a.case ?? 'unknown'))).size
 
   const typeCounts = filteredActions.value.reduce<Record<string, number>>((acc, a) => {
-    const t = String(a.type ?? a.actionType ?? a.event ?? 'unknown')
+    const t = actionTypeOf(a)
     acc[t] = (acc[t] ?? 0) + 1
     return acc
   }, {})
 
   const corrected = filteredActions.value.filter((a) => {
-    const t = String(a.type ?? a.actionType ?? '').toLowerCase()
+    const t = actionTypeOf(a).toLowerCase()
     return t.includes('correct') || t.includes('corrected') || t.includes('revision') || t.includes('revised')
   }).length
 
   const correctionRate = total ? corrected / total : 0
 
   const totalDurationSeconds = filteredActions.value.reduce((acc, a) => {
-    const v = a.durationSeconds ?? a.duration_seconds
-    const n = typeof v === 'number' ? v : Number(v)
-    return acc + (Number.isFinite(n) ? n : 0)
+    return acc + (durationOf(a) ?? 0)
   }, 0)
 
   const avgDurationSeconds = total ? totalDurationSeconds / total : 0
@@ -177,10 +232,10 @@ const dayBuckets = computed(() => {
   return buckets
 })
 
-const actionDistribution = computed(() => {
+const actionDistribution = computed<Array<[string, number]>>(() => {
   const counts: Record<string, number> = {}
   for (const a of filteredActions.value) {
-    const t = String(a.type ?? a.actionType ?? a.event ?? 'unknown')
+    const t = actionTypeOf(a)
     counts[t] = (counts[t] ?? 0) + 1
   }
   return Object.entries(counts)
@@ -202,7 +257,7 @@ async function refreshActions() {
   loading.value = true
   error.value = null
   try {
-    const res = await $fetch(resolveApiUrl('/users/actions'), { method: 'GET' })
+    const res = await apiFetch(resolveApiUrl('/users/actions'), { method: 'GET' })
     actions.value = asArray(res)
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Failed to load user actions.'
@@ -215,16 +270,23 @@ async function recordInteraction() {
   loading.value = true
   error.value = null
   try {
-    await $fetch(resolveApiUrl('/users/actions'), {
+    const userId = decodeJwtSub(accessToken.value) ?? 'web-fe-user'
+    const sessionId = getSessionId()
+    await apiFetch(resolveApiUrl('/users/actions'), {
       method: 'POST',
       body: {
-        type: recordForm.type,
-        caseId: recordForm.caseId || undefined,
-        slideId: recordForm.slideId || undefined,
-        durationSeconds: recordForm.durationSeconds,
-        confidenceDelta: recordForm.confidenceDelta,
-        note: recordForm.note || undefined,
-        timestamp: Date.now()
+        user_id: userId,
+        session_id: sessionId,
+        action_type: recordForm.type,
+        page_url: typeof window !== 'undefined' ? window.location.pathname : '/user-behavioral',
+        metadata: {
+          caseId: recordForm.caseId || undefined,
+          slideId: recordForm.slideId || undefined,
+          durationSeconds: recordForm.durationSeconds,
+          confidenceDelta: recordForm.confidenceDelta,
+          note: recordForm.note || undefined
+        },
+        timestamp: new Date().toISOString()
       }
     })
     await refreshActions()
@@ -250,6 +312,8 @@ async function sendUxInsight() {
   uxSending.value = true
   uxError.value = null
   try {
+    const userId = decodeJwtSub(accessToken.value) ?? 'web-fe-user'
+    const sessionId = getSessionId()
     const caseId = getSelectedCaseId()
     const slideId = getSelectedSlideId()
 
@@ -261,15 +325,22 @@ async function sendUxInsight() {
       .filter(Boolean)
       .join('\n')
 
-    await $fetch(resolveApiUrl('/users/actions'), {
+    await apiFetch(resolveApiUrl('/users/actions'), {
       method: 'POST',
       body: {
-        type: 'ux_insight',
-        caseId: caseId || undefined,
-        slideId: slideId || undefined,
-        durationSeconds: 1,
-        note,
-        timestamp: Date.now()
+        user_id: userId,
+        session_id: sessionId,
+        action_type: 'ux_insight',
+        page_url: typeof window !== 'undefined' ? window.location.pathname : '/user-behavioral',
+        metadata: {
+          caseId: caseId || undefined,
+          slideId: slideId || undefined,
+          durationSeconds: 1,
+          note,
+          category: uxInsightForm.category,
+          severity: uxInsightForm.severity
+        },
+        timestamp: new Date().toISOString()
       }
     })
 
@@ -429,7 +500,7 @@ onMounted(() => {
                     class="bar-fill w-full anim-fade-up"
                     :style="{
                       height: `${Math.min(100, (n / (Math.max(...dayBuckets) || 1)) * 100)}%`,
-                      animationDelay: `${i * 60}ms`,
+                      animationDelay: `${Number(i) * 60}ms`,
                       marginTop: 'auto'
                     }"
                   />
@@ -451,7 +522,7 @@ onMounted(() => {
                 v-for="(entry, idx) in actionDistribution"
                 :key="entry[0]"
                 class="anim-fade-up"
-                :style="{ animationDelay: `${idx * 40}ms` }"
+                :style="{ animationDelay: `${Number(idx) * 40}ms` }"
               >
                 <div class="flex items-center justify-between gap-2">
                   <span class="truncate text-xs font-medium">{{ entry[0] }}</span>
@@ -635,13 +706,13 @@ onMounted(() => {
                   :class="selectedActionIndex === idx
                     ? 'border-ui-primary/40 bg-ui-primary/5 shadow-sm'
                     : 'border-ui-border/30 hover:border-ui-primary/20 hover:bg-ui-primary/[2%]'"
-                  :style="{ animationDelay: `${Math.min(idx, 10) * 30}ms` }"
+                  :style="{ animationDelay: `${Math.min(Number(idx), 10) * 30}ms` }"
                   @click="selectedAction = a; selectedActionIndex = idx"
                 >
                   <div class="flex items-center justify-between gap-2">
                     <div class="flex items-center gap-2">
                       <span class="rounded-full bg-ui-primary/10 px-2 py-0.5 text-[11px] font-medium text-ui-primary">
-                        {{ a.type ?? a.actionType ?? a.event ?? 'unknown' }}
+                        {{ actionTypeOf(a) }}
                       </span>
                     </div>
                     <span class="text-[11px] text-ui-muted">
@@ -649,8 +720,8 @@ onMounted(() => {
                     </span>
                   </div>
                   <div class="mt-2 flex items-center gap-4 text-xs text-ui-muted">
-                    <span>{{ a.caseId ?? a.case_id ?? '—' }} / {{ a.slideId ?? a.slide_id ?? '—' }}</span>
-                    <span>{{ a.durationSeconds ?? a.duration_seconds ?? '—' }}s</span>
+                    <span>{{ caseIdOf(a) || '—' }} / {{ slideIdOf(a) || '—' }}</span>
+                    <span>{{ durationOf(a) ?? '—' }}s</span>
                   </div>
                 </button>
               </div>
@@ -693,7 +764,7 @@ onMounted(() => {
                         Type
                       </p>
                       <p class="mt-0.5 text-sm font-semibold">
-                        {{ selectedAction.type ?? selectedAction.actionType ?? selectedAction.event ?? 'unknown' }}
+                        {{ actionTypeOf(selectedAction) }}
                       </p>
                     </div>
                     <div class="rounded-lg bg-ui-bg/60 p-2.5">
@@ -701,7 +772,7 @@ onMounted(() => {
                         Duration
                       </p>
                       <p class="mt-0.5 text-sm font-semibold">
-                        {{ selectedAction.durationSeconds ?? selectedAction.duration_seconds ?? '—' }}s
+                        {{ durationOf(selectedAction) ?? '—' }}s
                       </p>
                     </div>
                     <div class="rounded-lg bg-ui-bg/60 p-2.5 sm:col-span-2">
@@ -709,7 +780,7 @@ onMounted(() => {
                         Case / Slide
                       </p>
                       <p class="mt-0.5 text-sm font-semibold">
-                        {{ selectedAction.caseId ?? selectedAction.case_id ?? '—' }} / {{ selectedAction.slideId ?? selectedAction.slide_id ?? '—' }}
+                        {{ caseIdOf(selectedAction) || '—' }} / {{ slideIdOf(selectedAction) || '—' }}
                       </p>
                     </div>
                   </div>
