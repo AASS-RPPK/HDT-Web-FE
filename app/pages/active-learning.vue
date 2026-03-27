@@ -118,6 +118,7 @@ const tuningConfig = reactive({
 })
 
 const autoDeployAfterTrain = ref<boolean>(false)
+const commsLoading = ref<{ train: boolean, deploy: boolean }>({ train: false, deploy: false })
 
 const deployConfig = reactive({
   action: 'deploy' as 'deploy' | 'rollback',
@@ -243,6 +244,46 @@ async function onDeployOrRollback() {
   }
 }
 
+async function testTrainCommunication() {
+  commsLoading.value.train = true
+  try {
+    const res = await apiFetch(resolveApiUrl('/models/annotation/train'), {
+      method: 'POST',
+      body: {
+        mode: 'connectivity-test',
+        epochs: 1,
+        learningRate: 0.0001,
+        batchSize: 1
+      }
+    })
+    lastResponse.value = res
+    addActivity('success', 'Connectivity test OK: POST /models/annotation/train')
+  } catch (e) {
+    addActivity('error', e instanceof Error ? e.message : 'Train connectivity test failed.')
+  } finally {
+    commsLoading.value.train = false
+  }
+}
+
+async function testDeployCommunication() {
+  commsLoading.value.deploy = true
+  try {
+    const res = await apiFetch(resolveApiUrl('/models/annotation/deploy'), {
+      method: 'POST',
+      body: {
+        action: 'deploy',
+        modelVersion: 'connectivity-test'
+      }
+    })
+    lastResponse.value = res
+    addActivity('success', 'Connectivity test OK: POST /models/annotation/deploy')
+  } catch (e) {
+    addActivity('error', e instanceof Error ? e.message : 'Deploy connectivity test failed.')
+  } finally {
+    commsLoading.value.deploy = false
+  }
+}
+
 function statusColor(status: StepStatus) {
   switch (status) {
     case 'loading': return 'text-ui-primary'
@@ -298,6 +339,20 @@ onMounted(() => {
               class="input-modern w-64"
               placeholder="https://your-backend.com"
             >
+            <button
+              class="rounded-md border border-ui-border px-2 py-1 text-xs text-ui-muted transition hover:border-ui-primary hover:text-ui-primary disabled:cursor-not-allowed disabled:opacity-60"
+              :disabled="commsLoading.train"
+              @click="testTrainCommunication"
+            >
+              {{ commsLoading.train ? 'Testing train…' : 'Test train' }}
+            </button>
+            <button
+              class="rounded-md border border-ui-border px-2 py-1 text-xs text-ui-muted transition hover:border-ui-primary hover:text-ui-primary disabled:cursor-not-allowed disabled:opacity-60"
+              :disabled="commsLoading.deploy"
+              @click="testDeployCommunication"
+            >
+              {{ commsLoading.deploy ? 'Testing deploy…' : 'Test deploy' }}
+            </button>
           </div>
         </div>
       </div>
