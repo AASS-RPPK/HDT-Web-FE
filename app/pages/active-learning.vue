@@ -77,6 +77,7 @@ function asArray(maybeItems: unknown): QueueItem[] {
   if (Array.isArray(obj.items)) return obj.items as QueueItem[]
   if (Array.isArray(obj.queue)) return obj.queue as QueueItem[]
   if (Array.isArray(obj.results)) return obj.results as QueueItem[]
+  if (Array.isArray(obj.feedback)) return obj.feedback as QueueItem[]
   return []
 }
 
