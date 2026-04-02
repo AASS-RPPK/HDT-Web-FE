@@ -11,10 +11,13 @@ export const useAuth = () => {
   const isAuthenticated = computed(() => !!accessToken.value)
 
   function getApiBase(): string {
-    const fromStorage = typeof window !== 'undefined'
-      ? (window.localStorage.getItem('hdt_apiBase') ?? '')
-      : ''
-    return fromStorage || (runtimeConfig.public.apiBase as string) || ''
+    const stored =
+      typeof window !== 'undefined'
+        ? (window.localStorage.getItem('hdt_apiBase') ?? '').trim()
+        : ''
+    const fallback = String(runtimeConfig.public.apiBase ?? '').trim()
+    const raw = (stored || fallback).replace(/\/$/, '')
+    return raw
   }
 
   /** Called once by the client plugin to hydrate state from localStorage. */

@@ -7,8 +7,9 @@ export default defineNuxtConfig({
 
   runtimeConfig: {
     public: {
-      // Overridden at runtime by NUXT_PUBLIC_API_BASE env var (set in docker-compose).
-      apiBase: ''
+      // Default matches HDT-DevOps API gateway host port. Override with NUXT_PUBLIC_API_BASE
+      // (e.g. in docker-compose) or per-browser via hdt_apiBase on feature pages.
+      apiBase: 'http://localhost:8000'
     }
   },
 
